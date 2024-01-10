@@ -22,11 +22,15 @@ uint16_t aime_io_get_api_version(void)
 HRESULT aime_io_init(void)
 {
     int ret;
-
-    AllocConsole();
-    SetConsoleTitle("aimeio-pcsc");
     FILE* fp;
-    freopen_s(&fp, "CONOUT$", "w", stdout);
+
+    ret = AllocConsole();
+
+    // someone might already allocated a console - seeing this on fufubot's segatools
+    if (ret != 0) {
+        // only when we allocate a console, we need to redirect stdout
+        freopen_s(&fp, "CONOUT$", "w", stdout);
+    }
 
     ctx = aimepcsc_create();
     if (!ctx) {
@@ -57,7 +61,6 @@ HRESULT aime_io_nfc_poll(uint8_t unit_no)
     }
 
     memset(&data, 0, sizeof(data));
-    printf("aimeio-pcsc: poll.\n");
 
     ret = aimepcsc_poll(ctx, &data);
 
