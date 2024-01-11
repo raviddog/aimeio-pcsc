@@ -78,11 +78,9 @@ HRESULT aime_io_nfc_get_aime_id(
 {
     assert(luid != NULL);
 
-    if (unit_no != 0 || data.card_type != Mifare) {
+    if (unit_no != 0 || data.card_type != Mifare || luid_size != data.card_id_len) {
         return S_FALSE;
     }
-
-    assert(luid_size == data.card_id_len);
 
     memcpy(luid, data.card_id, luid_size);
 
@@ -96,7 +94,7 @@ HRESULT aime_io_nfc_get_felica_id(uint8_t unit_no, uint64_t *IDm)
 
     assert(IDm != NULL);
 
-    if (unit_no != 0 || data.card_type != FeliCa) {
+    if (unit_no != 0 || data.card_type != FeliCa || data.card_id_len != 8) {
         return S_FALSE;
     }
 
