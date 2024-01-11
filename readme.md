@@ -3,7 +3,7 @@ aimeio-pcsc
 
 PC/SC-based Aime card reader for `segatools`. `aimeio-pcsc` allows you to use PC/SC compliant smart card readers as your Aime card reader in `segatools`. `aimeio-pcsc` only properly supports the old Mifare Classic 1K-based Aime cards.
 
-If you scan a newer AIC-based AIME, its FeliCa IDm will be provided to the game. The game will not see the correct "access code," but the IDm should be unique to each card so that particular card can still track your plays. 
+If you scan a newer AIC-based Aime, its FeliCa IDm will be provided to the game. The game will not see the correct "access code," but the IDm should be unique to each card so that particular card can still track your plays. 
 
 Tested on SONY's PaSoRi RC-S300. Other readers should, in theory, also work.
 

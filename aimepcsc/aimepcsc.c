@@ -5,6 +5,8 @@ static const uint8_t atr_ios14443_common[] = {0x3B, 0x8F, 0x80, 0x01, 0x80, 0x4F
 static const uint8_t cardtype_m1k[] = {0x03, 0x00, 0x01};
 static const uint8_t cardtype_felica[] = {0x11, 0x00, 0x3B};
 
+static const uint8_t felica_cmd_readidm[] = {0xFF, 0xCA, 0x00, 0x00, 0x00};
+
 static const uint8_t m1k_cmd_loadkey[] = {0xFF, 0x82, 0x00, 0x00, 0x06, 0x57, 0x43, 0x43, 0x46, 0x76, 0x32};
 static const uint8_t m1k_cmd_auth_block2[] = {0xFF, 0x86, 0x00, 0x00, 0x05, 0x01, 0x00, 0x02, 0x61, 0x00};
 static const uint8_t m1k_cmd_read_block2[] = {0xFF, 0xB0, 0x00, 0x02, 0x10};
@@ -17,32 +19,7 @@ struct aimepcsc_context {
     CHAR last_error[256];
 };
 
-static int read_felica_aime(struct aimepcsc_context *ctx, LPSCARDHANDLE card, struct aime_data *data) {
-    uint8_t buf[32];
-    DWORD len;
-    LONG ret;
-
-    /* read card ID */
-    len = sizeof(buf);
-    ret = SCardTransmit(*card, SCARD_PCI_T1, (LPCBYTE) "\xFF\xCA\x00\x00\x00", 5, NULL, buf, &len);
-
-    if (ret != SCARD_S_SUCCESS) {
-        snprintf(ctx->last_error, sizeof(ctx->last_error), "SCardTransmit failed: %08lX", (ULONG) ret);
-        return -1;
-    }
-
-    if (len != 10) {
-        snprintf(ctx->last_error, sizeof(ctx->last_error), "invalid card ID length: %lu", len);
-        return -1;
-    }
-
-    data->card_id_len = 8;
-    memcpy(data->card_id, buf, 8);
-
-    return 0;
-}
-
-#define M1K_CMD(card, cmd, expected_res_len) \
+#define APDU_SEND(card, cmd, expected_res_len) \
     do { \
         len = sizeof(buf); \
         ret = SCardTransmit(*card, SCARD_PCI_T1, cmd, sizeof(cmd), NULL, buf, &len); \
@@ -52,9 +29,23 @@ static int read_felica_aime(struct aimepcsc_context *ctx, LPSCARDHANDLE card, st
         } \
         if (len != expected_res_len || buf[expected_res_len - 2] != 0x90 || buf[expected_res_len - 1] != 0x00) { \
             snprintf(ctx->last_error, sizeof(ctx->last_error), #cmd " failed; res_len=%lu, res_code=%02x%02x", len, buf[2], buf[3]); \
-            return -1; \
+            return 1; \
         } \
     } while (0)
+
+static int read_felica_aime(struct aimepcsc_context *ctx, LPSCARDHANDLE card, struct aime_data *data) {
+    uint8_t buf[32];
+    DWORD len;
+    LONG ret;
+
+    /* read card ID */
+    APDU_SEND(card, felica_cmd_readidm, 10);
+
+    data->card_id_len = 8;
+    memcpy(data->card_id, buf, 8);
+
+    return 0;
+}
 
 static int read_m1k_aime(struct aimepcsc_context *ctx, LPSCARDHANDLE card, struct aime_data *data) {
     uint8_t buf[32];
@@ -62,13 +53,13 @@ static int read_m1k_aime(struct aimepcsc_context *ctx, LPSCARDHANDLE card, struc
     LONG ret;
 
     /* load key onto reader */
-    M1K_CMD(card, m1k_cmd_loadkey, 2);
+    APDU_SEND(card, m1k_cmd_loadkey, 2);
 
     /* authenticate block 2 */
-    M1K_CMD(card, m1k_cmd_auth_block2, 2);
+    APDU_SEND(card, m1k_cmd_auth_block2, 2);
 
     /* read block 2 */
-    M1K_CMD(card, m1k_cmd_read_block2, 18);
+    APDU_SEND(card, m1k_cmd_read_block2, 18);
 
     data->card_id_len = 10;
     memcpy(data->card_id, buf + 6, 10);
@@ -132,6 +123,9 @@ int aimepcsc_poll(struct aimepcsc_context *ctx, struct aime_data *data) {
     LONG ret;
     LPBYTE pbAttr = NULL;
     DWORD cByte = SCARD_AUTOALLOCATE;
+    int retval;
+
+    retval = 0;
 
     memset(&rs, 0, sizeof(SCARD_READERSTATE));
 
@@ -177,40 +171,41 @@ int aimepcsc_poll(struct aimepcsc_context *ctx, struct aime_data *data) {
 
     if (cByte != 20) {
         snprintf(ctx->last_error, sizeof(ctx->last_error), "invalid ATR length: %lu", cByte);
-        goto errout;
+        retval = 1;
+        goto out;
     }
 
     /* check ATR */
     if (memcmp(pbAttr, atr_ios14443_common, sizeof(atr_ios14443_common)) != 0) {
         snprintf(ctx->last_error, sizeof(ctx->last_error), "invalid card type.");
-        goto errout;
+        retval = 1;
+        goto out;
     }
 
     /* check card type */
     if (memcmp(pbAttr + sizeof(atr_ios14443_common), cardtype_m1k, sizeof(cardtype_m1k)) == 0) {
         data->card_type = Mifare;
-        if (read_m1k_aime(ctx, &hCard, data) != 0) {
-            goto errout;
+        if (read_m1k_aime(ctx, &hCard, data) < 0) {
+            retval = -1;
+            goto out;
         }
     } else if (memcmp(pbAttr + sizeof(atr_ios14443_common), cardtype_felica, sizeof(cardtype_felica)) == 0) {
         data->card_type = FeliCa;
-        if (read_felica_aime(ctx, &hCard, data) != 0) {
-            goto errout;
+        if (read_felica_aime(ctx, &hCard, data) < 0) {
+            retval = -1;
+            goto out;
         }
     } else {
         snprintf(ctx->last_error, sizeof(ctx->last_error), "invalid card type.");
-        goto errout;
+        retval = 1;
+        goto out;
     }
 
+out:
     SCardFreeMemory(ctx->hContext, pbAttr);
     SCardDisconnect(hCard, SCARD_LEAVE_CARD);
 
-    return 0;
-
-errout: 
-    SCardFreeMemory(ctx->hContext, pbAttr);
-    SCardDisconnect(hCard, SCARD_LEAVE_CARD);
-    return -1;
+    return retval;
 }
 
 const char* aimepcsc_error(struct aimepcsc_context *ctx) {
