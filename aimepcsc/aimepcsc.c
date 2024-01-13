@@ -125,7 +125,7 @@ int aimepcsc_poll(struct aimepcsc_context *ctx, struct aime_data *data) {
     DWORD cByte = SCARD_AUTOALLOCATE;
     int retval;
 
-    retval = 0;
+    retval = 1;
 
     memset(&rs, 0, sizeof(SCARD_READERSTATE));
 
@@ -171,35 +171,40 @@ int aimepcsc_poll(struct aimepcsc_context *ctx, struct aime_data *data) {
 
     if (cByte != 20) {
         snprintf(ctx->last_error, sizeof(ctx->last_error), "invalid ATR length: %lu", cByte);
-        retval = 1;
         goto out;
     }
 
     /* check ATR */
     if (memcmp(pbAttr, atr_ios14443_common, sizeof(atr_ios14443_common)) != 0) {
         snprintf(ctx->last_error, sizeof(ctx->last_error), "invalid card type.");
-        retval = 1;
         goto out;
     }
 
     /* check card type */
     if (memcmp(pbAttr + sizeof(atr_ios14443_common), cardtype_m1k, sizeof(cardtype_m1k)) == 0) {
         data->card_type = Mifare;
-        if (read_m1k_aime(ctx, &hCard, data) < 0) {
+        ret = read_m1k_aime(ctx, &hCard, data);
+        if (ret < 0) {
             retval = -1;
+            goto out;
+        } else if (ret > 0) {
             goto out;
         }
     } else if (memcmp(pbAttr + sizeof(atr_ios14443_common), cardtype_felica, sizeof(cardtype_felica)) == 0) {
         data->card_type = FeliCa;
-        if (read_felica_aime(ctx, &hCard, data) < 0) {
+        ret = read_felica_aime(ctx, &hCard, data);
+        if (ret < 0) {
             retval = -1;
+            goto out;
+        } else if (ret > 0) {
             goto out;
         }
     } else {
         snprintf(ctx->last_error, sizeof(ctx->last_error), "invalid card type.");
-        retval = 1;
         goto out;
     }
+
+    retval = 0;
 
 out:
     SCardFreeMemory(ctx->hContext, pbAttr);
