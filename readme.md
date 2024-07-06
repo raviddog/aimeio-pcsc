@@ -5,6 +5,9 @@ PC/SC-based Aime card reader for `segatools`. `aimeio-pcsc` allows you to use PC
 
 If you scan a newer AIC-based Aime, its FeliCa IDm will be provided to the game. The game will not see the correct "access code," but the IDm should be unique to each card so that particular card can still track your plays. 
 
+If the game doesn't know what to do with the FeLiCa IDm, you can convert it into an access code by creating a file called `aimeio_felicadb.txt` and adding a line containing the FeLiCa IDm code, and the access code to substitute it with.
+`0123456789ABCDEF 12345678901234567890`
+
 Tested on SONY's PaSoRi RC-S300. Other readers should, in theory, also work.
 
 ### Usage

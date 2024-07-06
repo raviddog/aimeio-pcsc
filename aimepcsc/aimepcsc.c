@@ -33,6 +33,38 @@ struct aimepcsc_context {
         } \
     } while (0)
 
+static void convert_felica_to_access_code(struct aime_data *data) {
+    FILE *fptr;
+    fptr = fopen("aimeio_felicadb.txt", "r");
+
+    char fid[16];
+    for(int i = 0; i < 8; i++) {
+        sprintf(&fid[i*2], "%02X", data->card_id[i]);
+    }
+    printf("Scanned felica %s\n", fid);
+    
+    if(fptr) {
+        int found = 0;
+        char buf[100];
+        while(fgets(buf, 100, fptr)) {
+            if(strncmp(buf, fid, 16) == 0) {
+                char access_code[10];
+                char *buf_ac = &buf[17];
+                for(int i = 0; i < 10; i++)
+                {
+                    sscanf(&buf_ac[i*2], "%02hhx", &access_code[i]);
+                }
+                printf("Found match, replacing with access code %s\n", buf_ac);
+                memcpy(data->card_id, access_code, 10);
+                data->card_id_len = 10;
+                data->card_type = Mifare;
+                break;
+            }
+        }
+    }
+    fclose(fptr);
+}
+
 static int read_felica_aime(struct aimepcsc_context *ctx, LPSCARDHANDLE card, struct aime_data *data) {
     uint8_t buf[32];
     DWORD len;
@@ -43,6 +75,8 @@ static int read_felica_aime(struct aimepcsc_context *ctx, LPSCARDHANDLE card, st
 
     data->card_id_len = 8;
     memcpy(data->card_id, buf, 8);
+
+    convert_felica_to_access_code(data);
 
     return 0;
 }
